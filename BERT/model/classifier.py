@@ -79,3 +79,35 @@ def create_model(args,
     accuracy = fluid.layers.accuracy(input=probs, label=labels, total=num_seqs)
 
     return pyreader, loss, probs, accuracy, num_seqs
+
+
+def create_bert_module(args,
+                       pyreader_name,
+                       bert_config,
+                       num_labels,
+                       is_prediction=False):
+    pyreader = fluid.layers.py_reader(
+        capacity=50,
+        shapes=[[-1, args.max_seq_len, 1], [-1, args.max_seq_len, 1],
+                [-1, args.max_seq_len, 1], [-1, args.max_seq_len, 1], [-1, 1]],
+        dtypes=['int64', 'int64', 'int64', 'float32', 'int64'],
+        lod_levels=[0, 0, 0, 0, 0],
+        name=pyreader_name,
+        use_double_buffer=True)
+
+    (src_ids, pos_ids, sent_ids, input_mask,
+     labels) = fluid.layers.read_file(pyreader)
+
+    bert = BertModel(
+        src_ids=src_ids,
+        position_ids=pos_ids,
+        sentence_ids=sent_ids,
+        input_mask=input_mask,
+        config=bert_config,
+        use_fp16=args.use_fp16)
+
+    pooled_output = bert.get_pooled_output()
+
+    sequence_output = bert.get_sequence_output()
+
+    return src_ids, pos_ids, sent_ids, input_mask, pooled_output, sequence_output

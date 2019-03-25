@@ -28,7 +28,7 @@ import paddle.fluid as fluid
 
 import reader.cls as reader
 from model.bert import BertConfig
-from model.classifier import create_model
+from model.classifier import create_hub_model
 from optimization import optimization
 from utils.args import ArgumentGroup, print_arguments
 from utils.init import init_pretraining_params, init_checkpoint
@@ -76,7 +76,6 @@ data_g.add_arg("random_seed",   int,  0,     "Random seed.")
 run_type_g = ArgumentGroup(parser, "run_type", "running type options.")
 run_type_g.add_arg("use_cuda",                     bool,   True,  "If set, use GPU for training.")
 run_type_g.add_arg("use_fast_executor",            bool,   False, "If set, use fast parallel executor (in experiment).")
-run_type_g.add_arg("num_iteration_per_drop_scope", int,    1,     "Ihe iteration intervals to clean up temporary variables.")
 run_type_g.add_arg("task_name",                    str,    None,
                    "The name of task to perform fine-tuning, should be in {'xnli', 'mnli', 'cola', 'mrpc'}.")
 run_type_g.add_arg("do_train",                     bool,   True,  "Whether to perform training.")
@@ -170,7 +169,7 @@ def main(args):
 
         with fluid.program_guard(train_program, startup_prog):
             with fluid.unique_name.guard():
-                train_pyreader, loss, probs, accuracy, num_seqs = create_model(
+                train_pyreader, loss, probs, accuracy, num_seqs = create_hub_model(
                     args,
                     pyreader_name='train_reader',
                     bert_config=bert_config,
@@ -208,7 +207,7 @@ def main(args):
         test_prog = fluid.Program()
         with fluid.program_guard(test_prog, startup_prog):
             with fluid.unique_name.guard():
-                test_pyreader, loss, probs, accuracy, num_seqs = create_model(
+                test_pyreader, loss, probs, accuracy, num_seqs = create_hub_model(
                     args,
                     pyreader_name='test_reader',
                     bert_config=bert_config,
@@ -247,9 +246,9 @@ def main(args):
 
     if args.do_train:
         exec_strategy = fluid.ExecutionStrategy()
-        exec_strategy.use_experimental_executor = args.use_fast_executor
+        if args.use_fast_executor:
+            exec_strategy.use_experimental_executor = True
         exec_strategy.num_threads = dev_count
-        exec_strategy.num_iteration_per_drop_scope = args.num_iteration_per_drop_scope
 
         train_exe = fluid.ParallelExecutor(
             use_cuda=args.use_cuda,
