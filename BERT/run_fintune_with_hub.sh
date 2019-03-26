@@ -1,15 +1,14 @@
 export FLAGS_enable_parallel_graph=1
 export FLAGS_sync_nccl_allreduce=1
-export CUDA_VISIBLE_DEVICES=7
+export CUDA_VISIBLE_DEVICES=6
 
 BERT_BASE_PATH="chinese_L-12_H-768_A-12"
 TASK_NAME='chnsenticorp'
 DATA_PATH=chnsenticorp_data
 CKPT_PATH=chn_checkpoints
 
-rm -rf $CKPT_PATH
-
-python -u run_classifier.py --task_name ${TASK_NAME} \
+rm -rf $CKPT_PATH 
+python -u finetune_with_hub.py --task_name ${TASK_NAME} \
                    --use_cuda true \
                    --do_train true \
                    --do_val true \
