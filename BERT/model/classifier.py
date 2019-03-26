@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import paddle.fluid as fluid
+import paddle_hub as hub
 
 from model.bert import BertModel
 
@@ -50,6 +51,76 @@ def create_model(args,
     cls_feats = bert.get_pooled_output()
     cls_feats = fluid.layers.dropout(
         x=cls_feats,
+        dropout_prob=0.1,
+        dropout_implementation="upscale_in_train")
+    logits = fluid.layers.fc(
+        input=cls_feats,
+        size=num_labels,
+        param_attr=fluid.ParamAttr(
+            name="cls_out_w",
+            initializer=fluid.initializer.TruncatedNormal(scale=0.02)),
+        bias_attr=fluid.ParamAttr(
+            name="cls_out_b", initializer=fluid.initializer.Constant(0.)))
+
+    if is_prediction:
+        probs = fluid.layers.softmax(logits)
+        feed_targets_name = [
+            src_ids.name, pos_ids.name, sent_ids.name, input_mask.name
+        ]
+        return pyreader, probs, feed_targets_name
+
+    ce_loss, probs = fluid.layers.softmax_with_cross_entropy(
+        logits=logits, label=labels, return_softmax=True)
+    loss = fluid.layers.mean(x=ce_loss)
+
+    if args.use_fp16 and args.loss_scaling > 1.0:
+        loss *= args.loss_scaling
+
+    num_seqs = fluid.layers.create_tensor(dtype='int64')
+    accuracy = fluid.layers.accuracy(input=probs, label=labels, total=num_seqs)
+
+    return pyreader, loss, probs, accuracy, num_seqs
+
+
+def create_model_with_hub(args,
+                          pyreader_name,
+                          bert_config,
+                          num_labels,
+                          is_prediction=False):
+    pyreader = fluid.layers.py_reader(
+        capacity=50,
+        shapes=[[-1, args.max_seq_len, 1], [-1, args.max_seq_len, 1],
+                [-1, args.max_seq_len, 1], [-1, args.max_seq_len, 1], [-1, 1]],
+        dtypes=['int64', 'int64', 'int64', 'float32', 'int64'],
+        lod_levels=[0, 0, 0, 0, 0],
+        name=pyreader_name,
+        use_double_buffer=True)
+
+    (src_ids, pos_ids, sent_ids, input_mask,
+     labels) = fluid.layers.read_file(pyreader)
+
+    module = hub.Module(module_dir="./chinese_L-12_H-768_A-12.hub_module")
+    #    module = hub.Module(module_dir="./bert_module")
+
+    input_dict, output_dict, bert_program = module.context(
+        sign_name="pooled_output", trainable=True)
+
+    connect_dict = {
+        input_dict[0].name: src_ids,
+        input_dict[1].name: pos_ids,
+        input_dict[2].name: sent_ids,
+        input_dict[3].name: input_mask
+    }
+
+    hub.connect_program(
+        pre_program=fluid.default_main_program(),
+        next_program=bert_program,
+        input_dict=connect_dict)
+
+    pooled_output = output_dict["pooled_output"]
+
+    cls_feats = fluid.layers.dropout(
+        x=pooled_output,
         dropout_prob=0.1,
         dropout_implementation="upscale_in_train")
     logits = fluid.layers.fc(

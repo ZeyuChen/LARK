@@ -7,7 +7,7 @@ TASK_NAME='chnsenticorp'
 DATA_PATH=chnsenticorp_data
 CKPT_PATH=chn_checkpoints
 
-python -u create_bert_module.py --task_name ${TASK_NAME} \
+python -u create_module.py --task_name ${TASK_NAME} \
                    --use_cuda true \
                    --do_train true \
                    --do_val true \

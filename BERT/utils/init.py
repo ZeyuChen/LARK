@@ -66,6 +66,7 @@ def init_pretraining_params(exe,
 
     def existed_params(var):
         if not isinstance(var, fluid.framework.Parameter):
+            print("param {} not exsist!".format(var.name))
             return False
         return os.path.exists(os.path.join(pretraining_params_path, var.name))
 
@@ -74,8 +75,8 @@ def init_pretraining_params(exe,
         pretraining_params_path,
         main_program=main_program,
         predicate=existed_params)
-    print("Load pretraining parameters from {}.".format(
-        pretraining_params_path))
+    print(
+        "Load pretraining parameters from {}.".format(pretraining_params_path))
 
     if use_fp16:
         cast_fp32_to_fp16(exe, main_program)
