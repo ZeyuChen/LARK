@@ -173,8 +173,9 @@ def main(args):
             hub.create_module(
                 sign_arr=[pooled_output_sign, sequence_output_sign],
                 module_dir="./chinese_L-12_H-768_A-12.hub_module",
+                module_info="./bert_info.yml",
                 exe=exe,
-                assets=[])
+                assets=[args.vocab_path, args.bert_config_path])
 
 
 if __name__ == '__main__':

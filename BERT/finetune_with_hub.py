@@ -27,7 +27,6 @@ import multiprocessing
 import paddle
 import paddle.fluid as fluid
 import paddle_hub as hub
-from paddle_hub.finetune.hub_task import append_mlp_classifier
 
 import reader.cls as reader
 from model.bert import BertConfig
@@ -380,13 +379,7 @@ def main(args):
                  [loss.name, accuracy.name, num_seqs.name], "test")
 
 
-def test_hub(args, config):
-    if args.use_cuda:
-        place = fluid.CUDAPlace(int(os.getenv('FLAGS_selected_gpus', '0')))
-        dev_count = fluid.core.get_cuda_device_count()
-    else:
-        place = fluid.CPUPlace()
-        dev_count = int(os.environ.get('CPU_NUM', multiprocessing.cpu_count()))
+def test_hub_api(args, config):
 
     processor = reader.ChnsenticorpProcessor(
         data_dir=args.data_dir,
@@ -395,17 +388,8 @@ def test_hub(args, config):
         do_lower_case=args.do_lower_case,
         in_tokens=args.in_tokens,
         random_seed=args.random_seed)
+
     num_labels = len(processor.get_labels())
-
-    num_train_examples = processor.get_num_examples(phase='train')
-
-    if args.in_tokens:
-        max_train_steps = args.epoch * num_train_examples // (
-            args.batch_size // args.max_seq_len) // dev_count
-    else:
-        max_train_steps = args.epoch * num_train_examples // args.batch_size // dev_count
-
-    warmup_steps = int(max_train_steps * args.warmup_proportion)
 
     # loading paddlehub BERT
     module = hub.Module(module_dir="./chinese_L-12_H-768_A-12.hub_module")
@@ -416,122 +400,39 @@ def test_hub(args, config):
     startup_program = fluid.Program()
     with fluid.program_guard(train_program, startup_program):
         label = fluid.layers.data(name="label", shape=[1], dtype='int64')
-        feeder = fluid.DataFeeder(
-            feed_list=[
-                input_dict["src_ids"].name, input_dict["pos_ids"].name,
-                input_dict["sent_ids"].name, input_dict["input_mask"].name,
-                label.name
-            ],
-            place=place)
-        # fetch bert output_dict
+
         pooled_output = output_dict["pooled_output"]
 
-        loss, probs, accuracy, num_example = append_mlp_classifier(
+        feed_list = [
+            input_dict["src_ids"].name, input_dict["pos_ids"].name,
+            input_dict["sent_ids"].name, input_dict["input_mask"].name,
+            label.name
+        ]
+        task = hub.append_mlp_classifier(
             pooled_output, label, num_classes=num_labels)
 
-        # clone test program before optimize
-        test_program = train_program.clone(for_test=True)
-
-        bert_optimization(loss, warmup_steps, max_train_steps,
-                          args.learning_rate, train_program, args.weight_decay)
-
-        fluid.memory_optimize(
-            input_program=train_program,
-            skip_opt_set=[
-                loss.name, probs.name, accuracy.name, num_example.name
-            ])
-
-        place = fluid.CUDAPlace(0)
-        exe = fluid.Executor(place)
-        exe.run(startup_program)
-
-        # Traning block
-        # prepare training dataset
-        train_data_generator = processor.data_generator(
-            batch_size=args.batch_size,
-            phase='train',
-            epoch=args.epoch,
-            shuffle=False)
-        total_loss, total_acc, total_num_example = [], [], []
-        step = 0
-        time_begin = time.time()
-        train_time_used = 0.0
-        for example in train_data_generator():
-            step += 1
-            train_time_begin = time.time()
-            np_loss, np_acc, np_num_example = exe.run(
-                program=train_program,
-                feed=feeder.feed([example]),
-                fetch_list=[loss, accuracy, num_example])
-            train_time_used += time.time() - train_time_begin
-
-            # Statistic Block
-            total_loss.extend(np_loss * np_num_example)
-            total_acc.extend(np_acc * np_num_example)
-            total_num_example.extend(np_num_example)
-            if step % config.stat_interval == 0:
-                # get training progress
-                accum_num_example = np.sum(total_num_example)
-                print(
-                    "step {}: loss={:.5f} acc={:.5f} [step/sec: {:.2f}]".format(
-                        step,
-                        np.sum(total_loss) / accum_num_example,
-                        np.sum(total_acc) / accum_num_example,
-                        config.stat_interval / train_time_used))
-                # reset statistic variables
-                total_loss, total_acc, total_num_example = [], [], []
-                train_time_used = 0.0
-
-            # Evaluation block
-            if step % config.eval_interval == 0:
-                print("Evaluation start")
-                total_loss, total_acc, total_num_example = [], [], []
-                dev_data_generator = processor.data_generator(
-                    batch_size=args.batch_size, phase='dev', shuffle=False)
-
-                eval_step = 0
-                eval_time_begin = time.time()
-                for example in dev_data_generator():
-                    eval_step += 1
-                    np_loss, np_acc, np_num_example = exe.run(
-                        program=test_program,
-                        feed=feeder.feed([example]),
-                        fetch_list=[loss, accuracy, num_example])
-                    total_loss.extend(np_loss * np_num_example)
-                    total_acc.extend(np_acc * np_num_example)
-                    total_num_example.extend(np_num_example)
-                eval_time_used = time.time() - eval_time_begin
-                accum_num_example = np.sum(total_num_example)
-                print("[Evaluation] loss={:.5f} acc={:.5f} [step/sec: {:.2f}]".
-                      format(
-                          np.sum(total_loss) / accum_num_example,
-                          np.sum(total_acc) / accum_num_example,
-                          eval_step / eval_time_used))
-
-            if step % config.eval_interval == 0:
-                # Final Test Block
-                total_loss, total_acc, total_num_example = [], [], []
-                test_data_generator = processor.data_generator(
-                    batch_size=args.batch_size, phase='test', shuffle=False)
-                for example in test_data_generator():
-                    np_loss, np_acc, np_num_example = exe.run(
-                        program=test_program,
-                        feed=feeder.feed([example]),
-                        fetch_list=[loss, accuracy, num_example])
-                    total_loss.extend(np_loss * np_num_example)
-                    total_acc.extend(np_acc * np_num_example)
-                    total_num_example.extend(np_num_example)
-                accum_num_example = np.sum(total_num_example)
-                print("[Final Test] loss={:.5f} acc={:.5f}".format(
-                    np.sum(total_loss) / accum_num_example,
-                    np.sum(total_acc) / accum_num_example))
+        hub.finetune_and_eval(train_program, startup_program, task, feed_list,
+                              processor, config)
 
 
-FinetuneConfig = collections.namedtuple(
-    'FinetuneConfig', ['stat_interval', 'eval_interval', 'use_cuda'])
+FinetuneConfig = collections.namedtuple('FinetuneConfig', [
+    'stat_interval', 'eval_interval', 'use_cuda', 'learning_rate',
+    'weight_decay', 'in_tokens', 'epoch', 'batch_size', 'max_seq_len',
+    'warmup_proportion'
+])
 
 if __name__ == '__main__':
     print_arguments(args)
-    config = FinetuneConfig(stat_interval=10, eval_interval=100, use_cuda=True)
-    test_hub(args, config)
+    config = FinetuneConfig(
+        stat_interval=10,
+        eval_interval=100,
+        use_cuda=True,
+        learning_rate=args.learning_rate,
+        weight_decay=args.weight_decay,
+        in_tokens=args.in_tokens,
+        epoch=args.epoch,
+        batch_size=args.batch_size,
+        max_seq_len=args.max_seq_len,
+        warmup_proportion=args.warmup_proportion)
+    test_hub_api(args, config)
     # main(args)
