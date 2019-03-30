@@ -1,6 +1,6 @@
 export FLAGS_enable_parallel_graph=1
 export FLAGS_sync_nccl_allreduce=1
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=3
 
 BERT_BASE_PATH="chinese_L-12_H-768_A-12"
 TASK_NAME='chnsenticorp'
@@ -14,6 +14,8 @@ python -u create_module.py --task_name ${TASK_NAME} \
                    --do_test true \
                    --batch_size 4096 \
                    --in_tokens true \
+                   --bert_model_dir ${BERT_BASE_PATH} \
+                   --hub_module_name "bert_"$BERT_BASE_PATH \
                    --init_pretraining_params ${BERT_BASE_PATH}/params \
                    --data_dir ${DATA_PATH} \
                    --vocab_path ${BERT_BASE_PATH}/vocab.txt \

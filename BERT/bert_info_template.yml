@@ -1,0 +1,6 @@
+name: bert_chinese_L-12_H-768_A-12
+type: NLP/pretrain-model
+author: paddlepaddle
+author_email: paddle-dev@baidu.com
+version: 1.0.0
+description: BERT-chinese_L-12_H-768_A-12

@@ -26,6 +26,34 @@ import paddle.fluid as fluid
 from model.ernie import ErnieModel
 
 
+def create_module(args, pyreader_name, ernie_config, is_prediction=False):
+    pyreader = fluid.layers.py_reader(
+        capacity=50,
+        shapes=[[-1, args.max_seq_len, 1], [-1, args.max_seq_len, 1],
+                [-1, args.max_seq_len, 1], [-1, args.max_seq_len, 1], [-1, 1],
+                [-1, 1]],
+        dtypes=['int64', 'int64', 'int64', 'float32', 'int64', 'int64'],
+        lod_levels=[0, 0, 0, 0, 0, 0],
+        name=pyreader_name,
+        use_double_buffer=True)
+
+    (src_ids, sent_ids, pos_ids, input_mask, labels,
+     qids) = fluid.layers.read_file(pyreader)
+
+    ernie = ErnieModel(
+        src_ids=src_ids,
+        position_ids=pos_ids,
+        sentence_ids=sent_ids,
+        input_mask=input_mask,
+        config=ernie_config,
+        use_fp16=args.use_fp16)
+
+    pooled_output = ernie.get_pooled_output()
+    sequence_output = ernie.get_sequence_output()
+
+    return src_ids, sent_ids, pos_ids, input_mask, pooled_output, sequence_output
+
+
 def create_model(args, pyreader_name, ernie_config, is_prediction=False):
     pyreader = fluid.layers.py_reader(
         capacity=50,
@@ -51,6 +79,95 @@ def create_model(args, pyreader_name, ernie_config, is_prediction=False):
     cls_feats = ernie.get_pooled_output()
     cls_feats = fluid.layers.dropout(
         x=cls_feats,
+        dropout_prob=0.1,
+        dropout_implementation="upscale_in_train")
+    logits = fluid.layers.fc(
+        input=cls_feats,
+        size=args.num_labels,
+        param_attr=fluid.ParamAttr(
+            name="cls_out_w",
+            initializer=fluid.initializer.TruncatedNormal(scale=0.02)),
+        bias_attr=fluid.ParamAttr(
+            name="cls_out_b", initializer=fluid.initializer.Constant(0.)))
+
+    if is_prediction:
+        probs = fluid.layers.softmax(logits)
+        feed_targets_name = [
+            src_ids.name, pos_ids.name, sent_ids.name, input_mask.name
+        ]
+        return pyreader, probs, feed_targets_name
+
+    ce_loss, probs = fluid.layers.softmax_with_cross_entropy(
+        logits=logits, label=labels, return_softmax=True)
+    loss = fluid.layers.mean(x=ce_loss)
+
+    if args.use_fp16 and args.loss_scaling > 1.0:
+        loss *= args.loss_scaling
+
+    num_seqs = fluid.layers.create_tensor(dtype='int64')
+    accuracy = fluid.layers.accuracy(input=probs, label=labels, total=num_seqs)
+
+    graph_vars = {
+        "loss": loss,
+        "probs": probs,
+        "accuracy": accuracy,
+        "labels": labels,
+        "num_seqs": num_seqs,
+        "qids": qids
+    }
+
+    for k, v in graph_vars.items():
+        v.persistable = True
+
+    return pyreader, graph_vars
+
+
+def create_model_with_hub(args,
+                          pyreader_name,
+                          ernie_config,
+                          is_prediction=False):
+    pyreader = fluid.layers.py_reader(
+        capacity=50,
+        shapes=[[-1, args.max_seq_len, 1], [-1, args.max_seq_len, 1],
+                [-1, args.max_seq_len, 1], [-1, args.max_seq_len, 1], [-1, 1],
+                [-1, 1]],
+        dtypes=['int64', 'int64', 'int64', 'float32', 'int64', 'int64'],
+        lod_levels=[0, 0, 0, 0, 0, 0],
+        name=pyreader_name,
+        use_double_buffer=True)
+
+    (src_ids, sent_ids, pos_ids, input_mask, labels,
+     qids) = fluid.layers.read_file(pyreader)
+
+    module = hub.Module(module_dir="./ernie-stable.hub_module")
+
+    input_dict, output_dict, ernie_program = module.context(
+        sign_name="pooled_output", trainable=True)
+
+    connect_dict = {
+        input_dict[0].name: src_ids,
+        input_dict[1].name: pos_ids,
+        input_dict[2].name: sent_ids,
+        input_dict[3].name: input_mask
+    }
+
+    hub.connect_program(
+        pre_program=fluid.default_main_program(),
+        next_program=ernie_program,
+        input_dict=connect_dict)
+
+    pooled_output = output_dict["pooled_output"]
+
+    # ernie = ErnieModel(
+    #     src_ids=src_ids,
+    #     position_ids=pos_ids,
+    #     sentence_ids=sent_ids,
+    #     input_mask=input_mask,
+    #     config=ernie_config,
+    #     use_fp16=args.use_fp16)
+    # cls_feats = ernie.get_pooled_output()
+    cls_feats = fluid.layers.dropout(
+        x=pooled_output,
         dropout_prob=0.1,
         dropout_implementation="upscale_in_train")
     logits = fluid.layers.fc(

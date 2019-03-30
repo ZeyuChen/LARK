@@ -37,6 +37,8 @@ from utils.init import init_pretraining_params, init_checkpoint
 # yapf: disable
 parser = argparse.ArgumentParser(__doc__)
 model_g = ArgumentGroup(parser, "model", "model configuration and paths.")
+model_g.add_arg("bert_model_dir",         str,  None,           "Path to the json file for bert model config.")
+model_g.add_arg("hub_module_name",         str,  None,           "PaddleHub module name")
 model_g.add_arg("bert_config_path",         str,  None,           "Path to the json file for bert model config.")
 model_g.add_arg("init_checkpoint",          str,  None,           "Init checkpoint to resume training from.")
 model_g.add_arg("init_pretraining_params",  str,  None,
@@ -172,8 +174,8 @@ def main(args):
 
             hub.create_module(
                 sign_arr=[pooled_output_sign, sequence_output_sign],
-                module_dir="./chinese_L-12_H-768_A-12.hub_module",
-                module_info="./bert_info.yml",
+                module_dir=args.hub_module_name + ".hub_module",
+                module_info=os.path.join(args.bert_model_dir, "bert_info.yml"),
                 exe=exe,
                 assets=[args.vocab_path, args.bert_config_path])
 
