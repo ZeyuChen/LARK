@@ -166,7 +166,7 @@ nlpcc-dbqa是由国际自然语言处理和中文计算会议NLPCC于2016年举�
 2) [任务数据下载](https://ernie.bj.bcebos.com/task_data.tgz)
 
 ### 安装
-本项目依赖于 Paddle Fluid 1.3.0，请参考[安装指南](http://www.paddlepaddle.org/#quick-start)进行安装。
+本项目依赖于 Paddle Fluid 1.3.1，请参考[安装指南](http://www.paddlepaddle.org/#quick-start)进行安装。
 
 **Note**: 预训练任务和finetune任务测试机器为P40, 显存22G；如果显存低于22G, 某些任务可能会因显存不足报错；
 
@@ -261,3 +261,30 @@ text_a  text_b  label
 [dev evaluation] f1: 0.951949, precision: 0.944636, recall: 0.959376, elapsed time: 19.156693 s
 [test evaluation] f1: 0.937390, precision: 0.925988, recall: 0.949077, elapsed time: 36.565929 s
 ```
+
+### FAQ
+
+#### 如何获取输入句子经过 ERNIE 编码后的 Embedding 表示?
+
+可以通过 ernie_encoder.py 抽取出输入句子的 Embedding 表示和句子中每个 token 的 Embedding 表示，数据格式和 [Fine-tuning 任务](#Fine-tuning-任务) 一节中介绍的各种类型 Fine-tuning 任务的训练数据格式一致；以获取 LCQM dev 数据集中的句子 Embedding 和 token embedding 为例，示例脚本如下:
+
+```
+export FLAGS_sync_nccl_allreduce=1
+export CUDA_VISIBLE_DEVICES=7
+
+python -u ernir_encoder.py \
+                   --use_cuda true \
+                   --batch_size 32 \
+                   --output_dir "./test" \
+                   --init_pretraining_params ${MODEL_PATH}/params \
+                   --data_set ${TASK_DATA_PATH}/lcqmc/dev.tsv \
+                   --vocab_path config/vocab.txt \
+                   --max_seq_len 128 \
+                   --ernie_config_path config/ernie_config.json
+```
+
+上述脚本运行结束后，会在当前路径的 test 目录下分别生成 `cls_emb.npy` 文件存储句子 embeddings 和 `top_layer_emb.npy` 文件存储 token embeddings; 实际使用时，参照示例脚本修改数据路径、embeddings 文件存储路径等配置即可运行；
+
+#### 如何获取输入句子中每个 token 经过 ERNIE 编码后的 Embedding 表示？
+
+[解决方案同上](#如何获取输入句子经过-ERNIE-编码后的-Embedding-表示?)
