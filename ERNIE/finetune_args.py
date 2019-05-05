@@ -25,6 +25,8 @@ from utils.args import ArgumentGroup
 # yapf: disable
 parser = argparse.ArgumentParser(__doc__)
 model_g = ArgumentGroup(parser, "model", "model configuration and paths.")
+model_g.add_arg("_model_dir",         str,  None,           "Path to the json file for bert model config.")
+model_g.add_arg("hub_module_name",         str,  None,           "PaddleHub module name")
 model_g.add_arg("ernie_config_path",         str,  None,           "Path to the json file for ernie model config.")
 model_g.add_arg("init_checkpoint",          str,  None,           "Init checkpoint to resume training from.")
 model_g.add_arg("init_pretraining_params",  str,  None,

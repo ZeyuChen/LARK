@@ -22,6 +22,7 @@ import numpy as np
 
 from six.moves import xrange
 import paddle.fluid as fluid
+import paddlehub as hub
 
 from model.ernie import ErnieModel
 
@@ -139,10 +140,10 @@ def create_model_with_hub(args,
     (src_ids, sent_ids, pos_ids, input_mask, labels,
      qids) = fluid.layers.read_file(pyreader)
 
-    module = hub.Module(module_dir="./ernie-stable.hub_module")
+    module = hub.Module(name="ernie")
 
     input_dict, output_dict, ernie_program = module.context(
-        sign_name="pooled_output", trainable=True)
+        trainable=True, max_seq_len=args.max_seq_len)
 
     connect_dict = {
         input_dict[0].name: src_ids,

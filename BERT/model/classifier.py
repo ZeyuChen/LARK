@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import paddle.fluid as fluid
-import paddle_hub as hub
+import paddlehub as hub
 
 from model.bert import BertModel
 

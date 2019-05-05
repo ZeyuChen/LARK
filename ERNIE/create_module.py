@@ -103,24 +103,19 @@ def main(args):
                     main_program=startup_prog,
                     use_fp16=args.use_fp16)
 
-                pooled_output_sign = hub.create_signature(
-                    "pooled_output",
+                tokens_sign = hub.create_signature(
+                    "tokens",
                     inputs=[src_ids, pos_ids, sent_ids, input_mask],
-                    outputs=[pooled_output],
-                    feed_names=["src_ids", "pos_ids", "sent_ids", "input_mask"],
-                    fetch_names=["pooled_output"])
-
-                sequence_output_sign = hub.create_signature(
-                    "sequence_output",
-                    inputs=[src_ids, pos_ids, sent_ids, input_mask],
-                    outputs=[sequence_output],
-                    feed_names=["src_ids", "pos_ids", "sent_ids", "input_mask"],
-                    fetch_names=["sequence_output"])
+                    outputs=[pooled_output, sequence_output],
+                    feed_names=[
+                        "input_ids", "position_ids", "segment_ids", "input_mask"
+                    ],
+                    fetch_names=["pooled_output", "sequence_output"])
 
                 hub.create_module(
-                    sign_arr=[pooled_output_sign, sequence_output_sign],
-                    module_dir="./ernie_stable.hub_module",
-                    module_info="./config/ernie_info.yml",
+                    sign_arr=[tokens_sign],
+                    module_dir=args.hub_module_name + ".hub_module",
+                    module_info=os.path.join("./config", "ernie_info.yml"),
                     exe=exe,
                     assets=[args.vocab_path, args.ernie_config_path])
 

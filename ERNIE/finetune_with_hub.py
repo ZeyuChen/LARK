@@ -113,16 +113,16 @@ def main(args):
                         graph_vars["num_seqs"].name,
                     ])
 
-        if args.verbose:
-            if args.in_tokens:
-                lower_mem, upper_mem, unit = fluid.contrib.memory_usage(
-                    program=train_program,
-                    batch_size=args.batch_size // args.max_seq_len)
-            else:
-                lower_mem, upper_mem, unit = fluid.contrib.memory_usage(
-                    program=train_program, batch_size=args.batch_size)
-            print("Theoretical memory usage in training: %.3f - %.3f %s" %
-                  (lower_mem, upper_mem, unit))
+            if args.verbose:
+                if args.in_tokens:
+                    lower_mem, upper_mem, unit = fluid.contrib.memory_usage(
+                        program=train_program,
+                        batch_size=args.batch_size // args.max_seq_len)
+                else:
+                    lower_mem, upper_mem, unit = fluid.contrib.memory_usage(
+                        program=train_program, batch_size=args.batch_size)
+                print("Theoretical memory usage in training: %.3f - %.3f %s" %
+                      (lower_mem, upper_mem, unit))
 
     if args.do_val or args.do_test:
         test_prog = fluid.Program()

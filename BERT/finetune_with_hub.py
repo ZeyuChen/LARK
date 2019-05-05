@@ -26,7 +26,7 @@ import multiprocessing
 
 import paddle
 import paddle.fluid as fluid
-import paddle_hub as hub
+import paddlehub as hub
 
 import reader.cls as reader
 from model.bert import BertConfig

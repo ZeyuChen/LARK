@@ -25,7 +25,7 @@ import multiprocessing
 
 import paddle
 import paddle.fluid as fluid
-import paddle_hub as hub
+import paddlehub as hub
 
 import reader.cls as reader
 from model.bert import BertConfig
@@ -38,7 +38,7 @@ from utils.init import init_pretraining_params, init_checkpoint
 parser = argparse.ArgumentParser(__doc__)
 model_g = ArgumentGroup(parser, "model", "model configuration and paths.")
 model_g.add_arg("bert_model_dir",         str,  None,           "Path to the json file for bert model config.")
-model_g.add_arg("hub_module_name",         str,  None,           "PaddleHub module name")
+model_g.add_arg("module_dir",         str,  None,           "PaddleHub module name")
 model_g.add_arg("bert_config_path",         str,  None,           "Path to the json file for bert model config.")
 model_g.add_arg("init_checkpoint",          str,  None,           "Init checkpoint to resume training from.")
 model_g.add_arg("init_pretraining_params",  str,  None,
@@ -158,26 +158,23 @@ def main(args):
                 main_program=startup_prog,
                 use_fp16=args.use_fp16)
 
-            pooled_output_sign = hub.create_signature(
-                "pooled_output",
+            tokens_sign = hub.create_signature(
+                "tokens",
                 inputs=[src_ids, pos_ids, sent_ids, input_mask],
-                outputs=[pooled_output],
-                feed_names=["src_ids", "pos_ids", "sent_ids", "input_mask"],
-                fetch_names=["pooled_output"])
-
-            sequence_output_sign = hub.create_signature(
-                "sequence_output",
-                inputs=[src_ids, pos_ids, sent_ids, input_mask],
-                outputs=[sequence_output],
-                feed_names=["src_ids", "pos_ids", "sent_ids", "input_mask"],
-                fetch_names=["sequence_output"])
+                outputs=[pooled_output, sequence_output],
+                feed_names=[
+                    "input_ids", "position_ids", "segment_ids", "input_mask"
+                ],
+                fetch_names=["pooled_output", "sequence_output"])
 
             hub.create_module(
-                sign_arr=[pooled_output_sign, sequence_output_sign],
-                module_dir=args.hub_module_name + ".hub_module",
-                module_info=os.path.join(args.bert_model_dir, "bert_info.yml"),
+                sign_arr=[tokens_sign],
+                module_dir=args.module_dir + ".hub_module",
+                module_info=os.path.join(args.bert_model_dir,
+                                         "module_info.yml"),
                 exe=exe,
-                assets=[args.vocab_path, args.bert_config_path])
+                assets=[args.vocab_path, args.bert_config_path],
+                extra_info={"max_seq_len": 512})
 
 
 if __name__ == '__main__':

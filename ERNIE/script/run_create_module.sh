@@ -1,7 +1,7 @@
 set -eux
 
 export FLAGS_sync_nccl_allreduce=1
-export CUDA_VISIBLE_DEVICES=4
+export CUDA_VISIBLE_DEVICES=3
 export MODEL_PATH=$HOME/LARK/ERNIE/ernie
 export TASK_DATA_PATH=$HOME/LARK/ERNIE/task_data/
 
@@ -12,6 +12,7 @@ python -u create_module.py \
                    --do_val true \
                    --do_test true \
                    --batch_size 32 \
+                   --hub_module_name "ernie_stable" \
                    --init_pretraining_params ${MODEL_PATH}/params \
                    --train_set ${TASK_DATA_PATH}/chnsenticorp/train.tsv \
                    --dev_set ${TASK_DATA_PATH}/chnsenticorp/dev.tsv \
@@ -23,7 +24,7 @@ python -u create_module.py \
                    --warmup_proportion 0.0 \
                    --validation_steps 100 \
                    --epoch 10 \
-                   --max_seq_len 128 \
+                   --max_seq_len 512 \
                    --ernie_config_path config/ernie_config.json \
                    --learning_rate 5e-5 \
                    --skip_steps 10 \
